@@ -1,8 +1,9 @@
 <Solution>
   <Folder Name="/Solution Items/" />
-  <Project Path="src/SecPerf.ApiMinimal/SecPerf.ApiMinimal.csproj" Id="d64284ec-af39-4864-b437-5a7656640b7a" />
-  <Project Path="src/SecPerf.ApiMvc/SecPerf.ApiMvc.csproj" />
+  <Project Path="src/SecPerf.Api.Controllers/SecPerf.Api.Controllers.csproj" />
+  <Project Path="src/SecPerf.Api.Minimal/SecPerf.Api.Minimal.csproj" />
   <Project Path="src/SecPerf.Application/SecPerf.Application.csproj" Id="1ce0d79a-8113-4427-b78d-8ede5a38e70e" />
+  <Project Path="src/SecPerf.Benchmarks/SecPerf.Benchmarks.csproj" Id="2bf3996b-1039-4838-99bf-d1240131e1c4" />
   <Project Path="src/SecPerf.Domain/SecPerf.Domain.csproj" Id="d92bc591-9d0d-477c-80e4-5dfab72880fe" />
   <Project Path="src/SecPerf.Infrastructure/SecPerf.Infrastructure.csproj" Id="b55930a8-0cc3-43cb-a1fd-ff9ccd39f7cd" />
 </Solution>
