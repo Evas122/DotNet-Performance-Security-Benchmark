@@ -31,7 +31,8 @@ public class ApplicationDbContext : DbContext
             b.Property(u => u.CreatedAt).IsRequired();
             b.HasIndex(u => u.Email).IsUnique();
             b.HasQueryFilter(u => !u.IsDeleted);
-            b.HasMany(u => u.Orders).WithOne(o => o.User).HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Restrict);
+            // Make relationship optional to avoid issues when User is filtered by global query filter
+            b.HasMany(u => u.Orders).WithOne(o => o.User).HasForeignKey(o => o.UserId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Category
@@ -50,7 +51,8 @@ public class ApplicationDbContext : DbContext
             b.Property(p => p.Stock).IsRequired();
             b.HasIndex(p => p.CategoryId);
             b.HasQueryFilter(p => !p.IsDeleted);
-            b.HasMany(p => p.OrderItems).WithOne(oi => oi.Product).HasForeignKey(oi => oi.ProductId).OnDelete(DeleteBehavior.Restrict);
+            // Make relationship optional to avoid issues when Product is filtered by global query filter
+            b.HasMany(p => p.OrderItems).WithOne(oi => oi.Product).HasForeignKey(oi => oi.ProductId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Order

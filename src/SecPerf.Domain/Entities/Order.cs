@@ -7,8 +7,8 @@ namespace SecPerf.Domain.Entities
     {
         public Guid Id { get; set; }
 
-        // FK
-        public Guid UserId { get; set; }
+        // FK (nullable to avoid issues with global query filters on User)
+        public Guid? UserId { get; set; }
         public User? User { get; set; }
 
         public DateTime CreatedAt { get; set; }
