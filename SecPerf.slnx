@@ -7,4 +7,5 @@
   <Project Path="src/SecPerf.Domain/SecPerf.Domain.csproj" Id="d92bc591-9d0d-477c-80e4-5dfab72880fe" />
   <Project Path="src/SecPerf.Infrastructure/SecPerf.Infrastructure.csproj" Id="b55930a8-0cc3-43cb-a1fd-ff9ccd39f7cd" />
   <Project Path="src/SecPerf.Seeder/SecPerf.Seeder.csproj" />
+  <Project Path="tests/SecPerf.Security.Tests/SecPerf.Security.Tests.csproj" Id="c08095fc-7ac0-4142-87c1-d68aa8d68898" />
 </Solution>
