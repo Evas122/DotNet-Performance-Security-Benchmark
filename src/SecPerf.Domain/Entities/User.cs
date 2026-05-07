@@ -19,5 +19,41 @@ namespace SecPerf.Domain.Entities
 
         // Navigation
         public ICollection<Order> Orders { get; set; } = new List<Order>();
+
+        // Domain logic
+        public string FullName => $"{FirstName} {LastName}".Trim();
+
+        public void UpdateName(string firstName, string lastName)
+        {
+            if (string.IsNullOrWhiteSpace(firstName)) throw new ArgumentException("First name is required", nameof(firstName));
+            if (string.IsNullOrWhiteSpace(lastName)) throw new ArgumentException("Last name is required", nameof(lastName));
+
+            FirstName = firstName;
+            LastName = lastName;
+        }
+
+        public void SetPasswordHash(string hash)
+        {
+            if (string.IsNullOrWhiteSpace(hash)) throw new ArgumentException("Password hash is required", nameof(hash));
+            PasswordHash = hash;
+        }
+
+        public void SoftDelete()
+        {
+            if (!IsDeleted)
+            {
+                IsDeleted = true;
+                DeletedAt = DateTime.UtcNow;
+            }
+        }
+
+        public void Restore()
+        {
+            if (IsDeleted)
+            {
+                IsDeleted = false;
+                DeletedAt = null;
+            }
+        }
     }
 }

@@ -21,6 +21,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProductRepository, SecPerf.Infrastructure.Repositories.ProductRepository>();
         services.AddScoped<ICategoryRepository, SecPerf.Infrastructure.Repositories.CategoryRepository>();
         services.AddScoped<IOrderRepository, SecPerf.Infrastructure.Repositories.OrderRepository>();
+        services.AddScoped<IRefreshTokenRepository, SecPerf.Infrastructure.Repositories.RefreshTokenRepository>();
+        services.AddScoped<IUnitOfWork, SecPerf.Infrastructure.Repositories.UnitOfWork>();
+
+        // JWT token service
+        services.AddScoped<SecPerf.Application.Interfaces.IJwtTokenService, SecPerf.Infrastructure.Services.JwtTokenService>();
+        services.AddScoped<SecPerf.Application.Interfaces.IPasswordHasher, SecPerf.Infrastructure.Services.PasswordHasher>();
 
         return services;
     }

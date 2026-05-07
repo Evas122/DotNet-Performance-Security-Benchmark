@@ -21,5 +21,37 @@ namespace SecPerf.Domain.Entities
 
         // Navigation
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+
+        // Domain logic
+        public void DecreaseStock(int amount)
+        {
+            if (amount <= 0) throw new ArgumentException("Amount must be positive", nameof(amount));
+            if (amount > Stock) throw new InvalidOperationException("Insufficient stock");
+            Stock -= amount;
+        }
+
+        public void IncreaseStock(int amount)
+        {
+            if (amount <= 0) throw new ArgumentException("Amount must be positive", nameof(amount));
+            Stock += amount;
+        }
+
+        public void SoftDelete()
+        {
+            if (!IsDeleted)
+            {
+                IsDeleted = true;
+                DeletedAt = DateTime.UtcNow;
+            }
+        }
+
+        public void Restore()
+        {
+            if (IsDeleted)
+            {
+                IsDeleted = false;
+                DeletedAt = null;
+            }
+        }
     }
 }

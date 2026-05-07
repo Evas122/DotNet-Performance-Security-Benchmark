@@ -14,6 +14,10 @@ public static class ServiceCollectionExtensions
         // Register MediatR handlers from this assembly
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(AssemblyReference).Assembly));
 
+        // Register pipeline behaviors: Logging -> Validation -> Handler
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(SecPerf.Application.Behaviors.LoggingBehavior<,>));
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(SecPerf.Application.Behaviors.ValidationBehavior<,>));
+
         // Register FluentValidation validators from this assembly
         services.AddValidatorsFromAssembly(typeof(AssemblyReference).Assembly);
 
