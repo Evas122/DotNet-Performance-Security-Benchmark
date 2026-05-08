@@ -13,7 +13,6 @@ var host = Host.CreateDefaultBuilder(args)
     })
     .ConfigureServices((ctx, services) =>
     {
-        // Register infrastructure (DbContext, repositories)
         services.AddInfrastructureServices(ctx.Configuration);
     })
     .Build();

@@ -1,15 +1,44 @@
+using AspNetCoreRateLimit;
 using SecPerf.Application.Extensions;
 using SecPerf.ApiMvc.Extensions;
 using SecPerf.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container (controllers-only API)
-builder.Services.AddControllers();
+// Add services to the container (controllers-only API) with ProblemDetails and JSON options
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var pd = new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = "See the errors property for details."
+            };
 
-// Application and infrastructure registrations
-builder.Services.AddApplicationServices();
-builder.Services.AddInfrastructureServices(builder.Configuration);
+            var errors = context.ModelState
+                .Where(kvp => kvp.Value.Errors.Count > 0)
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray());
+
+            pd.Extensions["errors"] = errors;
+
+            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(pd)
+            {
+                ContentTypes = { "application/problem+json" }
+            };
+        };
+    })
+    .AddJsonOptions(opts =>
+    {
+        opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    });
+
+// Application and infrastructure registrations (centralized)
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 // JWT and Swagger for API
 builder.Services.AddJwtAuthentication(builder.Configuration);
@@ -17,13 +46,40 @@ builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-app = app.UseSwaggerDocumentation();
-
-if (app.Environment.IsDevelopment())
+// Global exception handler returning ProblemDetails
+app.UseExceptionHandler(errApp =>
 {
-    // dev-specific configuration
-}
+    errApp.Run(async context =>
+    {
+        context.Response.ContentType = "application/problem+json";
+
+        var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        var ex = feature?.Error;
+
+        var pd = new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Title = "An unexpected error occurred",
+            Detail = ex?.Message,
+            Status = StatusCodes.Status500InternalServerError
+        };
+
+        context.Response.StatusCode = pd.Status.Value;
+        await System.Text.Json.JsonSerializer.SerializeAsync(context.Response.Body, pd, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+    });
+});
+
+// Security headers (NWebsec)
+app.UseXContentTypeOptions();
+app.UseReferrerPolicy(opts => opts.NoReferrer());
+app.UseXXssProtection(options => options.EnabledWithBlockMode());
+app.UseXfo(options => options.Deny());
+app.UseCsp(csp => csp.DefaultSources(d => d.Self()).ScriptSources(s => s.Self()));
+
+// Rate limiting
+app.UseMiddleware<AspNetCoreRateLimit.IpRateLimitMiddleware>();
+
+// Swagger
+app = app.UseSwaggerDocumentation();
 
 app.UseHttpsRedirection();
 

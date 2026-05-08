@@ -7,7 +7,6 @@ public static class ApplicationServiceExtensions
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        // Reuse existing registration implementation
         services.AddApplicationServices();
         return services;
     }

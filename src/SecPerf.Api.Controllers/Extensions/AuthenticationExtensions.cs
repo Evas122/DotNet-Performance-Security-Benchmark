@@ -10,9 +10,9 @@ public static class AuthenticationExtensions
 {
     public static IServiceCollection AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
-        var jwtKey = configuration["Jwt:Key"] ?? "ThisIsADevSecretKeyReplaceIt";
-        var jwtIssuer = configuration["Jwt:Issuer"] ?? "SecPerfIssuer";
-        var jwtAudience = configuration["Jwt:Audience"] ?? "SecPerfAudience";
+        var jwtKey = configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret is not configured");
+        var jwtIssuer = configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is not configured");
+        var jwtAudience = configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience is not configured");
 
         services.AddAuthentication(options =>
         {
