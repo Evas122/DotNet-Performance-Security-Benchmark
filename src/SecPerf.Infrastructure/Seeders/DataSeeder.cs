@@ -14,6 +14,8 @@ public static class DataSeeder
         using var scope = services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+        await context.Database.MigrateAsync();
+
         var categories = await CategorySeeder.SeedAsync(context);
         var users = await UserSeeder.SeedAsync(context);
         var products = await ProductSeeder.SeedAsync(context, categories);

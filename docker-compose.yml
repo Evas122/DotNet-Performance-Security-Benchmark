@@ -1,0 +1,146 @@
+services:
+
+  # ── SQL Server 2022 ────────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: "SecPerf_Pass123!"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SecPerf_Pass123!' -Q 'SELECT 1' -No"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── DB init: runs EF migrations + seeds 10k users / 10k products / 100k orders
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: SecPerf.Seeder
+        DLL_NAME: SecPerf.Seeder
+    environment:
+      ConnectionStrings__DefaultConnection: >-
+        Server=sqlserver;Database=SecPerfBenchmark;
+        User Id=sa;Password=SecPerf_Pass123!;
+        TrustServerCertificate=True;
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Minimal API ────────────────────────────────────────────────────────────
+  api-minimal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: SecPerf.Api.Minimal
+        DLL_NAME: SecPerf.Api.Minimal
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: >-
+        Server=sqlserver;Database=SecPerfBenchmark;
+        User Id=sa;Password=SecPerf_Pass123!;
+        TrustServerCertificate=True;
+      Jwt__Secret: "benchmark-secret-key-min-32-characters!!"
+      Jwt__Issuer: "secperf-benchmark"
+      Jwt__Audience: "secperf-benchmark-users"
+      Jwt__AccessTokenExpirationMinutes: "15"
+      Jwt__RefreshTokenExpirationDays: "7"
+    ports:
+      - "5001:8080"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Controller-based API ───────────────────────────────────────────────────
+  api-controllers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: SecPerf.Api.Controllers
+        DLL_NAME: SecPerf.Api.Controllers
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: >-
+        Server=sqlserver;Database=SecPerfBenchmark;
+        User Id=sa;Password=SecPerf_Pass123!;
+        TrustServerCertificate=True;
+      Jwt__Secret: "benchmark-secret-key-min-32-characters!!"
+      Jwt__Issuer: "secperf-benchmark"
+      Jwt__Audience: "secperf-benchmark-users"
+      Jwt__AccessTokenExpirationMinutes: "15"
+      Jwt__RefreshTokenExpirationDays: "7"
+    ports:
+      - "5002:8080"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── OWASP ZAP — Minimal API scan ──────────────────────────────────────────
+  zap-minimal:
+    image: zaproxy/zap-stable
+    user: zap
+    command: >
+      zap-baseline.py
+      -t http://api-minimal:8080
+      -r /zap/reports/minimal-api-report.html
+      -x /zap/reports/minimal-api-report.xml
+      -I
+    volumes:
+      - ./security/zap-reports:/zap/reports:rw
+    depends_on:
+      api-minimal:
+        condition: service_healthy
+    restart: "no"
+
+  # ── OWASP ZAP — Controller-based API scan ─────────────────────────────────
+  zap-controllers:
+    image: zaproxy/zap-stable
+    user: zap
+    command: >
+      zap-baseline.py
+      -t http://api-controllers:8080
+      -r /zap/reports/controllers-api-report.html
+      -x /zap/reports/controllers-api-report.xml
+      -I
+    volumes:
+      - ./security/zap-reports:/zap/reports:rw
+    depends_on:
+      api-controllers:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  sqldata:
