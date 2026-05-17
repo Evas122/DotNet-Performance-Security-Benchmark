@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SecPerf.Application.Dtos.Product;
 using SecPerf.Application.Features.Products.Commands.CreateProduct;
@@ -20,12 +21,14 @@ namespace SecPerf.ApiMvc.Controllers
         private readonly ISender _sender;
         public ProductsController(ISender sender) => _sender = sender;
 
+        [Authorize]
         [HttpPost]
         [ProducesResponseType(typeof(ProductDto), 200)]
         [ProducesResponseType(400)]
         public async Task<IActionResult> Create([FromBody] CreateProductRequest req)
             => await _sender.Send(new CreateProductCommand(req)) is Result<ProductDto> r ? (IActionResult)(r.IsSuccess ? Ok(r.Value) : BadRequest(new { error = r.Error?.Message })) : Problem();
 
+        [Authorize]
         [HttpPut("{id:guid}")]
         [ProducesResponseType(typeof(ProductDto), 200)]
         [ProducesResponseType(400)]
@@ -33,6 +36,7 @@ namespace SecPerf.ApiMvc.Controllers
         public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] UpdateProductRequest req)
             => await _sender.Send(new UpdateProductCommand(id, req)) is Result<ProductDto> r ? (IActionResult)(r.IsSuccess ? Ok(r.Value) : r.Error?.Code == "NotFound" ? NotFound(new { error = r.Error.Message }) : BadRequest(new { error = r.Error?.Message })) : Problem();
 
+        [Authorize]
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]

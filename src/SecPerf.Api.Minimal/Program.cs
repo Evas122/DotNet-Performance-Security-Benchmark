@@ -6,24 +6,16 @@ using SecPerf.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers();
-
 // Application and infrastructure registrations (centralized)
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// Health checks
-builder.Services.AddHealthChecks();
-
-// JWT Bearer authentication
+// JWT Bearer authentication + authorization
 builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddAuthorization();
 
 // Swagger / OpenAPI
 builder.Services.AddSwaggerDocumentation();
-
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
@@ -67,12 +59,9 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map auth endpoints (minimal API)
+// Map minimal API endpoints
 app.MapAuthEndpoints();
-
-// Map health/info endpoints
+app.MapProductEndpoints();
 app.MapHealthEndpoints();
-
-app.MapControllers();
 
 app.Run();

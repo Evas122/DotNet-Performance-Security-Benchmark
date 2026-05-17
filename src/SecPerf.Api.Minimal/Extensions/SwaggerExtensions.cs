@@ -11,6 +11,21 @@ public static class SwaggerExtensions
         services.AddSwaggerGen(c =>
         {
             c.EnableAnnotations();
+            c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
+            {
+                Name = "Authorization",
+                Type = Microsoft.OpenApi.SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+                In = Microsoft.OpenApi.ParameterLocation.Header,
+                Description = "Enter your JWT access token."
+            });
+            c.AddSecurityRequirement(doc =>
+            {
+                var requirement = new Microsoft.OpenApi.OpenApiSecurityRequirement();
+                requirement[new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", doc)] = new List<string>();
+                return requirement;
+            });
         });
 
         return services;
