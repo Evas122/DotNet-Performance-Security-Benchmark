@@ -20,6 +20,9 @@ public class RevokeTokenCommandHandler : IRequestHandler<RevokeTokenCommand, Res
         var existing = await _uow.RefreshTokens.GetByTokenAsync(request.RefreshToken);
         if (existing == null || !existing.IsActive) return Result.Fail("InvalidToken", "Refresh token invalid or already revoked");
 
+        if (existing.UserId != request.CallerUserId)
+            return Result.Fail("Forbidden", "You cannot revoke a refresh token that does not belong to you");
+
         existing.Revoke();
         await _uow.RefreshTokens.UpdateAsync(existing);
         await _uow.CommitAsync();

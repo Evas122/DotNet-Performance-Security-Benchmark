@@ -32,7 +32,9 @@ namespace SecPerf.Infrastructure.Repositories
             => _context.RefreshTokens.FirstOrDefaultAsync(t => t.Id == id);
 
         public Task<RefreshToken?> GetByTokenAsync(string token)
-            => _context.RefreshTokens.FirstOrDefaultAsync(t => t.Token == token);
+            => _context.RefreshTokens
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.Token == token);
 
         public Task UpdateAsync(RefreshToken token)
         {

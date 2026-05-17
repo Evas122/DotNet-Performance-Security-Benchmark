@@ -35,14 +35,28 @@ namespace SecPerf.ApiMvc.Controllers
         [HttpPost("refresh")]
         [ProducesResponseType(typeof(AuthResponse), 200)]
         [ProducesResponseType(400)]
-        public async Task<IActionResult> Refresh([FromBody] string refreshToken)
-            => await _sender.Send(new RefreshTokenCommand(refreshToken)) is Result<AuthResponse> r ? (IActionResult)(r.IsSuccess ? Ok(r.Value) : BadRequest(new { error = r.Error?.Message })) : Problem();
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequestBody req)
+            => await _sender.Send(new RefreshTokenCommand(req.RefreshToken)) is Result<AuthResponse> r ? (IActionResult)(r.IsSuccess ? Ok(r.Value) : BadRequest(new { error = r.Error?.Message })) : Problem();
 
         [Authorize]
         [HttpPost("revoke")]
         [ProducesResponseType(200)]
         [ProducesResponseType(400)]
-        public async Task<IActionResult> Revoke([FromBody] string refreshToken)
-            => await _sender.Send(new RevokeTokenCommand(refreshToken)) is Result r ? (IActionResult)(r.IsSuccess ? Ok() : BadRequest(new { error = r.Error?.Message })) : Problem();
+        [ProducesResponseType(403)]
+        public async Task<IActionResult> Revoke([FromBody] RevokeTokenRequestBody req)
+        {
+            var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(userIdStr, out var callerId)) return Unauthorized();
+
+            var r = await _sender.Send(new RevokeTokenCommand(req.RefreshToken, callerId));
+            if (r == null) return Problem();
+            if (r.IsSuccess) return Ok();
+            if (r.Error?.Code == "Forbidden") return StatusCode(StatusCodes.Status403Forbidden, new { error = r.Error.Message });
+            return BadRequest(new { error = r.Error?.Message });
+        }
+
+        public record RefreshTokenRequestBody(string RefreshToken);
+        public record RevokeTokenRequestBody(string RefreshToken);
     }
 }

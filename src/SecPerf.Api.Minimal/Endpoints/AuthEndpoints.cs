@@ -71,13 +71,19 @@ public static class AuthEndpoints
             return Results.Ok(result.Value);
         });
 
-        group.MapPost("/revoke", [Authorize] async (RevokeTokenRequestBody body, ISender sender) =>
+        group.MapPost("/revoke", [Authorize] async (RevokeTokenRequestBody body, ISender sender, HttpContext ctx) =>
         {
-            var result = await sender.Send(new RevokeTokenCommand(body.RefreshToken));
+            var userIdStr = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                            ?? ctx.User.FindFirst("sub")?.Value;
+            if (!Guid.TryParse(userIdStr, out var callerId)) return Results.Unauthorized();
+
+            var result = await sender.Send(new RevokeTokenCommand(body.RefreshToken, callerId));
             if (result == null) return Results.Problem("Null result from handler");
             if (result.IsFailure)
             {
-                return Results.BadRequest(new { error = result.Error?.Message });
+                return result.Error?.Code == "Forbidden"
+                    ? Results.Json(new { error = result.Error.Message }, statusCode: 403)
+                    : Results.BadRequest(new { error = result.Error?.Message });
             }
 
             return Results.Ok();

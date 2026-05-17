@@ -10,11 +10,23 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Configure DbContext - use DefaultConnection from configuration or a sensible LocalDB fallback
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
-
-        services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlServer(connectionString));
+        // Configure DbContext — the (serviceProvider, options) overload defers config reads to runtime
+        // so WebApplicationFactory configuration overrides are visible when the context is first created.
+        // Pass "InMemory" as the connection string (or leave it empty) to activate the InMemory provider.
+        services.AddDbContext<ApplicationDbContext>((sp, options) =>
+        {
+            var cfg  = sp.GetRequiredService<IConfiguration>();
+            var conn = cfg.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(conn) || conn.Equals("InMemory", StringComparison.OrdinalIgnoreCase))
+            {
+                var dbName = cfg["InMemoryDbName"] ?? "SecPerfTestDb";
+                options.UseInMemoryDatabase(dbName);
+            }
+            else
+            {
+                options.UseSqlServer(conn);
+            }
+        });
 
         // register repositories / infrastructure services
         services.AddScoped<IUserRepository, SecPerf.Infrastructure.Repositories.UserRepository>();
