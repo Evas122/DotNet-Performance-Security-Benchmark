@@ -91,6 +91,26 @@ public abstract class SecurityTestsBase
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task WrongIssuerToken_OnProtectedEndpoint_Returns401()
+    {
+        var client = CreateClient();
+        var token  = JwtTestHelper.CreateWrongIssuerToken();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var resp = await client.PostAsync(ProtectedPostEndpoint, SampleProductPayload());
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task WrongAudienceToken_OnProtectedEndpoint_Returns401()
+    {
+        var client = CreateClient();
+        var token  = JwtTestHelper.CreateWrongAudienceToken();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var resp = await client.PostAsync(ProtectedPostEndpoint, SampleProductPayload());
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Cross-user resource access → 403
     // User A cannot revoke User B's refresh token
@@ -112,6 +132,82 @@ public abstract class SecurityTestsBase
             new { refreshToken = authB.RefreshToken });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Refresh token replay attacks
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task RevokedRefreshToken_OnRefreshEndpoint_Returns400()
+    {
+        var client = CreateClient();
+        var auth   = await RegisterAsync(client);
+
+        // Revoke own refresh token (requires auth)
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        var revoke = await client.PostAsJsonAsync("/api/auth/revoke",
+            new { refreshToken = auth.RefreshToken });
+        revoke.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Replay the revoked token against /api/auth/refresh → must be rejected
+        client.DefaultRequestHeaders.Authorization = null;
+        var replay = await client.PostAsJsonAsync("/api/auth/refresh",
+            new { refreshToken = auth.RefreshToken });
+        replay.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            because: "a revoked refresh token must never be reusable");
+    }
+
+    [Fact]
+    public async Task RefreshTokenRotation_OldTokenIsInvalidAfterRefresh()
+    {
+        var client = CreateClient();
+        var auth   = await RegisterAsync(client);
+
+        // First refresh — old token T1 is rotated, T2 is issued
+        var firstRefresh = await client.PostAsJsonAsync("/api/auth/refresh",
+            new { refreshToken = auth.RefreshToken });
+        firstRefresh.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Try to use T1 again — must be rejected (token rotation)
+        var replay = await client.PostAsJsonAsync("/api/auth/refresh",
+            new { refreshToken = auth.RefreshToken });
+        replay.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            because: "after token rotation the old refresh token must be invalidated");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Security headers — NWebsec middleware must set all five headers
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task Response_ContainsExpectedSecurityHeaders()
+    {
+        var client = CreateClient();
+        var resp   = await client.GetAsync("/api/products");
+
+        // UseXContentTypeOptions()
+        resp.Headers.Should().ContainKey("X-Content-Type-Options");
+        resp.Headers.GetValues("X-Content-Type-Options")
+            .Should().Contain("nosniff");
+
+        // UseXfo(options => options.Deny())
+        resp.Headers.Should().ContainKey("X-Frame-Options");
+        resp.Headers.GetValues("X-Frame-Options")
+            .Should().ContainMatch("*eny*",  // NWebsec sends "Deny" (title-case)
+                because: "X-Frame-Options must be set to DENY to prevent clickjacking");
+
+        // UseXXssProtection(options => options.EnabledWithBlockMode())
+        resp.Headers.Should().ContainKey("X-XSS-Protection");
+
+        // UseReferrerPolicy(opts => opts.NoReferrer())
+        resp.Headers.Should().ContainKey("Referrer-Policy");
+        resp.Headers.GetValues("Referrer-Policy")
+            .Should().Contain("no-referrer");
+
+        // UseCsp(...)
+        resp.Headers.Should().ContainKey("Content-Security-Policy");
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -51,6 +51,32 @@ public static class JwtTestHelper
         return $"{header}.{payloadEncoded}."; // empty signature = alg:none
     }
 
+    public static string CreateWrongIssuerToken(Guid? userId = null)
+    {
+        var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtTestConstants.Secret));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer:             "https://attacker.evil.com",   // wrong issuer, correct key
+            audience:           JwtTestConstants.Audience,
+            claims:             BuildClaims(userId),
+            expires:            DateTime.UtcNow.AddHours(1),
+            signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public static string CreateWrongAudienceToken(Guid? userId = null)
+    {
+        var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtTestConstants.Secret));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer:             JwtTestConstants.Issuer,
+            audience:           "wrong-audience-not-accepted", // wrong audience, correct key
+            claims:             BuildClaims(userId),
+            expires:            DateTime.UtcNow.AddHours(1),
+            signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
     public static string CreateValidToken(Guid userId, string role = "Customer")
     {
         var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtTestConstants.Secret));
