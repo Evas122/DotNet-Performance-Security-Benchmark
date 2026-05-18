@@ -114,49 +114,17 @@ services:
       retries: 5
       start_period: 15s
 
-  # ── OWASP ZAP — Minimal API scan ──────────────────────────────────────────
-  zap-minimal:
-    image: zaproxy/zap-stable
-    user: zap
-    command: >
-      zap-baseline.py
-      -t http://api-minimal:8080
-      -r /zap/reports/minimal-api-report.html
-      -x /zap/reports/minimal-api-report.xml
-      -I
-    volumes:
-      - ./security/zap-reports:/zap/reports:rw
-    depends_on:
-      api-minimal:
-        condition: service_healthy
-    restart: "no"
-
-  # ── OWASP ZAP — Controller-based API scan ─────────────────────────────────
-  zap-controllers:
-    image: zaproxy/zap-stable
-    user: zap
-    command: >
-      zap-baseline.py
-      -t http://api-controllers:8080
-      -r /zap/reports/controllers-api-report.html
-      -x /zap/reports/controllers-api-report.xml
-      -I
-    volumes:
-      - ./security/zap-reports:/zap/reports:rw
-    depends_on:
-      api-controllers:
-        condition: service_healthy
-    restart: "no"
-
   # ── Resource monitor — próbkuje CPU/RAM obu API podczas testów k6 ────────────
+  # Uruchom ręcznie PRZED k6: docker compose --profile tests up resource-monitor
   resource-monitor:
     image: python:3.12-slim
+    profiles: ["tests"]
     command:
       - sh
       - -c
       - "pip install docker -q && python /monitor/monitor.py 2700"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./charts:/monitor:ro
       - ./k6/results:/results:rw
     depends_on:
@@ -169,6 +137,7 @@ services:
   # ── k6 load tests — uruchamia wszystkie scenariusze na obu API ───────────────
   k6:
     image: grafana/k6
+    profiles: ["tests"]
     entrypoint: ["/bin/sh", "/scripts/run-docker.sh"]
     volumes:
       - ./k6:/scripts:ro
@@ -180,9 +149,46 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # ── OWASP ZAP — Minimal API scan ──────────────────────────────────────────
+  zap-minimal:
+    image: zaproxy/zap-stable
+    profiles: ["security"]
+    user: zap
+    command: >
+      zap-baseline.py
+      -t http://api-minimal:8080
+      -r minimal-api-report.html
+      -x minimal-api-report.xml
+      -I
+    volumes:
+      - ./security/zap-reports:/zap/wrk:rw
+    depends_on:
+      api-minimal:
+        condition: service_healthy
+    restart: "no"
+
+  # ── OWASP ZAP — Controller-based API scan ─────────────────────────────────
+  zap-controllers:
+    image: zaproxy/zap-stable
+    profiles: ["security"]
+    user: zap
+    command: >
+      zap-baseline.py
+      -t http://api-controllers:8080
+      -r controllers-api-report.html
+      -x controllers-api-report.xml
+      -I
+    volumes:
+      - ./security/zap-reports:/zap/wrk:rw
+    depends_on:
+      api-controllers:
+        condition: service_healthy
+    restart: "no"
+
   # ── OWASP ZAP — authenticated scan Minimal API ────────────────────────────────
   zap-minimal-auth:
     image: zaproxy/zap-stable
+    profiles: ["security"]
     user: zap
     entrypoint: ["/bin/sh", "/scripts/zap-auth-scan.sh"]
     environment:
@@ -190,7 +196,7 @@ services:
       REPORT_BASE: "minimal-api-auth"
     volumes:
       - ./security:/scripts:ro
-      - ./security/zap-reports:/zap/reports:rw
+      - ./security/zap-reports:/zap/wrk:rw
     depends_on:
       zap-minimal:
         condition: service_completed_successfully
@@ -199,6 +205,7 @@ services:
   # ── OWASP ZAP — authenticated scan Controller-based API ───────────────────────
   zap-controllers-auth:
     image: zaproxy/zap-stable
+    profiles: ["security"]
     user: zap
     entrypoint: ["/bin/sh", "/scripts/zap-auth-scan.sh"]
     environment:
@@ -206,7 +213,7 @@ services:
       REPORT_BASE: "controllers-api-auth"
     volumes:
       - ./security:/scripts:ro
-      - ./security/zap-reports:/zap/reports:rw
+      - ./security/zap-reports:/zap/wrk:rw
     depends_on:
       zap-controllers:
         condition: service_completed_successfully
@@ -215,29 +222,29 @@ services:
   # ── Python charts — generuje wykresy po zakończeniu k6 i ZAP ─────────────────
   charts:
     image: python:3.12-slim
+    profiles: ["charts"]
     command:
       - sh
       - -c
       - |
         pip install -r /charts/requirements.txt -q &&
         python /charts/generate_charts.py
-          --minimal      /results/crud-load_minimal.json
-          --controllers  /results/crud-load_controllers.json
-          --zap-minimal  /zap-reports/minimal-api-report.xml
-          --zap-controllers /zap-reports/controllers-api-report.xml
-          --scenario     crud-load
+          --crud-minimal        /results/crud-load_minimal.json
+          --crud-controllers    /results/crud-load_controllers.json
+          --auth-minimal        /results/auth-flow_minimal.json
+          --auth-controllers    /results/auth-flow_controllers.json
+          --read-minimal        /results/read-heavy_minimal.json
+          --read-controllers    /results/read-heavy_controllers.json
+          --resources           /results/resources.csv
+          --zap-minimal         /zap-reports/minimal-api-report.xml
+          --zap-controllers     /zap-reports/controllers-api-report.xml
+          --zap-minimal-auth    /zap-reports/minimal-api-auth-report.xml
+          --zap-controllers-auth /zap-reports/controllers-api-auth-report.xml
     volumes:
       - ./charts:/charts:ro
       - ./charts/output:/charts/output:rw
       - ./k6/results:/results:ro
       - ./security/zap-reports:/zap-reports:ro
-    depends_on:
-      k6:
-        condition: service_completed_successfully
-      zap-minimal-auth:
-        condition: service_completed_successfully
-      zap-controllers-auth:
-        condition: service_completed_successfully
     restart: "no"
 
 volumes:

@@ -70,6 +70,9 @@ export const options = {
 
 const BASE_URL = resolveBaseUrl();
 
+// VU-scoped cache — przechowuje id ostatnio pobranego produktu
+let lastProductId = null;
+
 export function setup() {
     const email = `read_${Date.now()}@test.com`;
     return register(BASE_URL, email);
@@ -99,13 +102,13 @@ export default function (tokens) {
                 const products = res.json();
                 if (Array.isArray(products) && products.length > 0) {
                     // Zapisz id w VU-scope dla kolejnych iteracji (uproszczenie)
-                    __ENV._LAST_ID = products[Math.floor(Math.random() * Math.min(products.length, 10))].id;
+                    lastProductId = products[Math.floor(Math.random() * Math.min(products.length, 10))].id;
                 }
             } catch (_) {}
         }
     } else {
         // 20% — pojedynczy produkt
-        const id = __ENV._LAST_ID || "00000000-0000-0000-0000-000000000001";
+        const id = lastProductId || "00000000-0000-0000-0000-000000000001";
         const res = http.get(`${BASE_URL}/api/products/${id}`, headers);
         singleDuration.add(res.timings.duration);
         singleRequests.add(1);

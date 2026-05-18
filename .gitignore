@@ -420,3 +420,11 @@ FodyWeavers.xsd
 # Claude files
 .claude
 Claude.md
+
+# Benchmark & test results (generated, do not commit)
+k6/results/*.json
+k6/results/*.csv
+charts/output/*.png
+charts/output/*.svg
+security/zap-reports/*.html
+security/zap-reports/*.xml

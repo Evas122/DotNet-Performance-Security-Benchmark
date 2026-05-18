@@ -13,7 +13,7 @@ set -e
 
 TARGET="${TARGET:-http://api-minimal:8080}"
 REPORT_BASE="${REPORT_BASE:-api-auth}"
-REPORTS_DIR="/zap/reports"
+REPORTS_DIR="/zap/wrk"
 
 echo "[ZAP-auth] Rejestracja użytkownika skanującego..."
 

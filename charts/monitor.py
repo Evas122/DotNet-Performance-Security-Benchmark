@@ -18,7 +18,8 @@ except ImportError:
     print("[ERROR] Zainstaluj: pip install docker")
     sys.exit(1)
 
-CONTAINERS = ["secperf-api-minimal-1", "secperf-api-controllers-1"]
+# Discover containers by Compose service label — works regardless of project folder name
+SERVICES   = ["api-minimal", "api-controllers"]
 OUTPUT     = Path("/results/resources.csv")
 INTERVAL   = 2      # sekundy między próbkami
 DURATION   = int(sys.argv[1]) if len(sys.argv) > 1 else 1800  # domyślnie 30 min
@@ -63,17 +64,20 @@ def main():
 
         while time.time() < end_time:
             ts = int(time.time())
-            for name in CONTAINERS:
+            for service in SERVICES:
                 try:
-                    container = client.containers.get(name)
+                    matches = client.containers.list(
+                        filters={"label": f"com.docker.compose.service={service}", "status": "running"}
+                    )
+                    if not matches:
+                        continue
+                    container = matches[0]
                     stats     = container.stats(stream=False)
                     cpu       = cpu_percent(stats)
                     mem, lim, mem_pct = mem_stats(stats)
-                    writer.writerow([ts, name, cpu, mem, lim, mem_pct])
-                except docker.errors.NotFound:
-                    pass
+                    writer.writerow([ts, service, cpu, mem, lim, mem_pct])
                 except Exception as e:
-                    print(f"[monitor] {name}: {e}", flush=True)
+                    print(f"[monitor] {service}: {e}", flush=True)
 
             fh.flush()
             time.sleep(INTERVAL)
