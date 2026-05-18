@@ -17,7 +17,8 @@ public static class ProductSeeder
 
         var categoryIds = categories.Select(c => c.Id).ToList();
 
-        var faker = new Faker<Product>()
+        var faker = new Faker<Product>(locale: "en")
+            .UseSeed(42)
             .RuleFor(p => p.Id, _ => Guid.NewGuid())
             .RuleFor(p => p.Name, f => f.Commerce.ProductName())
             .RuleFor(p => p.Description, f => f.Commerce.ProductDescription())

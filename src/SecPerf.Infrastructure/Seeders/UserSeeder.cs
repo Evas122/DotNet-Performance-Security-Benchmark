@@ -19,7 +19,8 @@ public static class UserSeeder
         var passwordHash = BCrypt.Net.BCrypt.HashPassword("Test123!", workFactor: 4);
 
         // Ensure emails are unique by including a short GUID token — Bogus' Email() can produce duplicates at scale
-        var faker = new Faker<User>()
+        var faker = new Faker<User>(locale: "en")
+            .UseSeed(42)
             .RuleFor(u => u.Id, _ => Guid.NewGuid())
             .RuleFor(u => u.Email, f => $"{f.Internet.UserName()}.{Guid.NewGuid():N}@{f.Internet.DomainName()}")
             .RuleFor(u => u.FirstName, f => f.Name.FirstName())

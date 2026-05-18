@@ -7,10 +7,16 @@ services:
       SA_PASSWORD: "SecPerf_Pass123!"
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
+      MSSQL_MEMORY_LIMIT_MB: "3500"   # cap SQL Server buffer pool (~3.5 GB)
     ports:
       - "1433:1433"
     volumes:
       - sqldata:/var/opt/mssql
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 4G
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SecPerf_Pass123!' -Q 'SELECT 1' -No"]
       interval: 10s
@@ -140,6 +146,98 @@ services:
     depends_on:
       api-controllers:
         condition: service_healthy
+    restart: "no"
+
+  # ── Resource monitor — próbkuje CPU/RAM obu API podczas testów k6 ────────────
+  resource-monitor:
+    image: python:3.12-slim
+    command:
+      - sh
+      - -c
+      - "pip install docker -q && python /monitor/monitor.py 2700"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./charts:/monitor:ro
+      - ./k6/results:/results:rw
+    depends_on:
+      api-minimal:
+        condition: service_healthy
+      api-controllers:
+        condition: service_healthy
+    restart: "no"
+
+  # ── k6 load tests — uruchamia wszystkie scenariusze na obu API ───────────────
+  k6:
+    image: grafana/k6
+    entrypoint: ["/bin/sh", "/scripts/run-docker.sh"]
+    volumes:
+      - ./k6:/scripts:ro
+      - ./k6/results:/results:rw
+    depends_on:
+      api-minimal:
+        condition: service_healthy
+      api-controllers:
+        condition: service_healthy
+    restart: "no"
+
+  # ── OWASP ZAP — authenticated scan Minimal API ────────────────────────────────
+  zap-minimal-auth:
+    image: zaproxy/zap-stable
+    user: zap
+    entrypoint: ["/bin/sh", "/scripts/zap-auth-scan.sh"]
+    environment:
+      TARGET: "http://api-minimal:8080"
+      REPORT_BASE: "minimal-api-auth"
+    volumes:
+      - ./security:/scripts:ro
+      - ./security/zap-reports:/zap/reports:rw
+    depends_on:
+      zap-minimal:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── OWASP ZAP — authenticated scan Controller-based API ───────────────────────
+  zap-controllers-auth:
+    image: zaproxy/zap-stable
+    user: zap
+    entrypoint: ["/bin/sh", "/scripts/zap-auth-scan.sh"]
+    environment:
+      TARGET: "http://api-controllers:8080"
+      REPORT_BASE: "controllers-api-auth"
+    volumes:
+      - ./security:/scripts:ro
+      - ./security/zap-reports:/zap/reports:rw
+    depends_on:
+      zap-controllers:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── Python charts — generuje wykresy po zakończeniu k6 i ZAP ─────────────────
+  charts:
+    image: python:3.12-slim
+    command:
+      - sh
+      - -c
+      - |
+        pip install -r /charts/requirements.txt -q &&
+        python /charts/generate_charts.py
+          --minimal      /results/crud-load_minimal.json
+          --controllers  /results/crud-load_controllers.json
+          --zap-minimal  /zap-reports/minimal-api-report.xml
+          --zap-controllers /zap-reports/controllers-api-report.xml
+          --scenario     crud-load
+    volumes:
+      - ./charts:/charts:ro
+      - ./charts/output:/charts/output:rw
+      - ./k6/results:/results:ro
+      - ./security/zap-reports:/zap-reports:ro
+    depends_on:
+      k6:
+        condition: service_completed_successfully
+      zap-minimal-auth:
+        condition: service_completed_successfully
+      zap-controllers-auth:
+        condition: service_completed_successfully
     restart: "no"
 
 volumes:

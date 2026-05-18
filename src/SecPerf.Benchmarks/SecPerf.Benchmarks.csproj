@@ -5,6 +5,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- CS0436: expected — both API projects expose a top-level Program class;
+         the Benchmarks project's own Program.cs takes precedence correctly. -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\SecPerf.Application\SecPerf.Application.csproj" />
     <ProjectReference Include="..\SecPerf.Infrastructure\SecPerf.Infrastructure.csproj" />
+    <ProjectReference Include="..\SecPerf.Api.Minimal\SecPerf.Api.Minimal.csproj" />
+    <ProjectReference Include="..\SecPerf.Api.Controllers\SecPerf.Api.Controllers.csproj" />
   </ItemGroup>
 
 </Project>

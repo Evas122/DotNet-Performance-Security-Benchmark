@@ -15,8 +15,9 @@ public static class OrderSeeder
     {
         if (await context.Orders.AnyAsync()) return;
 
-        var random = new Random();
-        var orderFaker = new Faker<Order>()
+        var random = new Random(42);
+        var orderFaker = new Faker<Order>(locale: "en")
+            .UseSeed(42)
             .RuleFor(o => o.Id, _ => Guid.NewGuid())
             .RuleFor(o => o.UserId, f => f.PickRandom(users).Id)
             .RuleFor(o => o.CreatedAt, f => f.Date.Past(2))
