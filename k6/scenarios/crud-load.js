@@ -72,12 +72,12 @@ export const options = {
             startTime: "140s",                      // po ramp_up
         },
 
-        // ── Spike: 100 → 300 VU (nagły skok) ─────────────────────────────────
+        // ── Spike: 100 → 150 VU (nagły skok) ─────────────────────────────────
         spike: {
             executor:  "ramping-vus",
             startVUs:  100,
             stages: [
-                { duration: "30s", target: 300 },
+                { duration: "30s", target: 150 },
                 { duration: "30s", target: 100 },
                 { duration: "10s", target: 0   },
             ],

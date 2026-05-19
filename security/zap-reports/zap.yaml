@@ -27,14 +27,14 @@ jobs:
 - parameters:
     reportDescription: ''
     reportDir: /zap/wrk/
-    reportFile: controllers-api-report.html
+    reportFile: controllers-api-auth-report.html
     reportTitle: ZAP Scanning Report
     template: traditional-html
   type: report
 - parameters:
     reportDescription: ''
     reportDir: /zap/wrk/
-    reportFile: controllers-api-report.xml
+    reportFile: controllers-api-auth-report.xml
     reportTitle: ZAP Scanning Report
     template: traditional-xml
   type: report

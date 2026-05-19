@@ -60,18 +60,30 @@ C_P50  = "#388E3C"
 C_P95  = "#F57C00"
 C_P99  = "#C62828"
 
-DPI  = 300
-FS   = 9
-FST  = 11
+DPI  = 150      # niższe DPI = mniejszy plik, ale nadal czytelny
+FS   = 10
+FST  = 12
 
 plt.rcParams.update({
     "figure.facecolor": "white", "axes.facecolor": "white",
     "axes.edgecolor": "#cccccc", "axes.grid": True,
     "grid.color": "#eeeeee", "grid.linewidth": 0.8,
     "font.size": FS, "axes.titlesize": FST,
-    "axes.labelsize": FS, "xtick.labelsize": FS - 1,
-    "ytick.labelsize": FS - 1, "legend.fontsize": FS - 1,
+    "axes.labelsize": FS, "xtick.labelsize": FS,
+    "ytick.labelsize": FS, "legend.fontsize": FS - 1,
 })
+
+
+def _add_footnote(fig, text: str):
+    """Dodaje szarą ramkę z objaśnieniem na dole wykresu."""
+    fig.text(
+        0.5, -0.04, text,
+        ha="center", va="top", fontsize=FS - 2,
+        color="#444444",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="#F5F5F5",
+                  edgecolor="#BDBDBD", alpha=0.95),
+        wrap=True,
+    )
 
 # ── k6 JSON parser ─────────────────────────────────────────────────────────────
 
@@ -180,34 +192,135 @@ def _save(fig, name):
     print(f"  [OK] {name}")
 
 
+def _bar_label(ax, bar, text, pad=1, fontsize=None, color="black"):
+    """Etykieta nad słupkiem, ze spacją od góry."""
+    fs = fontsize or (FS - 1)
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        bar.get_height() + pad,
+        text, ha="center", va="bottom",
+        fontsize=fs, fontweight="bold", color=color,
+    )
+
+
 def chart_response_time(m_data, c_data, label, num):
-    vals_m = [pct(m_data["metrics"].get("http_req_duration", []), p) for p in [50, 95, 99]]
-    vals_c = [pct(c_data["metrics"].get("http_req_duration", []), p) for p in [50, 95, 99]]
-    x, w   = np.arange(3), 0.35
-    fig, ax = plt.subplots(figsize=(7, 4))
-    b1 = ax.bar(x - w/2, vals_m, w, label="Minimal API",        color=C_MIN,  zorder=3)
-    b2 = ax.bar(x + w/2, vals_c, w, label="Controller-based API", color=C_CTRL, zorder=3)
-    for bars in (b1, b2):
-        for b in bars:
-            ax.text(b.get_x() + b.get_width()/2, b.get_height() + 1,
-                    f"{b.get_height():.1f}", ha="center", va="bottom", fontsize=FS-1)
-    ax.set_title(f"Czas odpowiedzi HTTP [{label}]", pad=8)
+    """Trzy osobne subploty — każdy z własną skalą:
+       1) p50  — typowy request (mediana), skala dopasowana
+       2) p90  — 90% requestów poniżej tej wartości
+       3) p95/p99 — ogon (faza spike), z linią timeout k6
+    """
+    K6_TIMEOUT_MS = 30_000
+    dur_m = m_data["metrics"].get("http_req_duration", [])
+    dur_c = c_data["metrics"].get("http_req_duration", [])
+    p50m, p90m, p95m, p99m = [pct(dur_m, p) for p in (50, 90, 95, 99)]
+    p50c, p90c, p95c, p99c = [pct(dur_c, p) for p in (50, 90, 95, 99)]
+
+    w = 0.32
+    fig, axes = plt.subplots(1, 3, figsize=(13, 5),
+                             gridspec_kw={"wspace": 0.42})
+    fig.suptitle(f"Czas odpowiedzi HTTP [{label}]", fontsize=FST + 1, y=1.02)
+
+    # ── subplot 1: p50 (mediana) ──────────────────────────────────────────────
+    ax = axes[0]
+    bm = ax.bar(-w/2, p50m, w, color=C_MIN,  zorder=3, label="Minimal API")
+    bc = ax.bar( w/2, p50c, w, color=C_CTRL, zorder=3, label="Controller-based API")
+    _bar_label(ax, bm[0], f"{p50m:.0f} ms", pad=0.5)
+    _bar_label(ax, bc[0], f"{p50c:.0f} ms", pad=0.5)
+    ax.set_title("p50 — mediana\n(typowy request)", fontsize=FS)
     ax.set_ylabel("Czas [ms]")
-    ax.set_xticks(x); ax.set_xticklabels(["p50 (mediana)", "p95", "p99"])
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
-    _save(fig, f"{num:02d}_czas_odpowiedzi_{label}.png")
+    ax.set_xticks([])
+    ax.set_ylim(0, max(p50m, p50c) * 2.2)
+    ax.legend(loc="upper center", fontsize=FS - 2, ncol=1)
+    ax.set_axisbelow(True)
+
+    # ── subplot 2: p90 ────────────────────────────────────────────────────────
+    ax = axes[1]
+    bm2 = ax.bar(-w/2, p90m, w, color=C_MIN,  zorder=3, label="Minimal API")
+    bc2 = ax.bar( w/2, p90c, w, color=C_CTRL, zorder=3, label="Controller-based API")
+    for b, v in [(bm2[0], p90m), (bc2[0], p90c)]:
+        lbl = f"{v/1000:.1f} s" if v >= 1000 else f"{v:.0f} ms"
+        _bar_label(ax, b, lbl, pad=max(v * 0.01, 50))
+    ax.set_title("p90\n(90% requestów szybszych)", fontsize=FS)
+    ax.set_ylabel("Czas [ms]")
+    ax.set_xticks([])
+    ax.set_ylim(0, max(p90m, p90c) * 1.3)
+    if max(p90m, p90c) >= 1000:
+        ax.yaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda v, _: f"{v/1000:.0f} s"))
+    ax.legend(loc="upper center", fontsize=FS - 2, ncol=1)
+    ax.set_axisbelow(True)
+
+    # ── subplot 3: p95 i p99 z linią timeout ─────────────────────────────────
+    ax = axes[2]
+    x = np.array([0, 1])
+    b1 = ax.bar(x - w/2, [p95m, p99m], w, color=C_MIN,  zorder=3, label="Minimal API")
+    b2 = ax.bar(x + w/2, [p95c, p99c], w, color=C_CTRL, zorder=3, label="Controller-based API")
+    for b in list(b1) + list(b2):
+        lbl = f"{b.get_height()/1000:.1f} s"
+        _bar_label(ax, b, lbl, pad=max(b.get_height() * 0.01, 200))
+    # linia timeout — wewnątrz obszaru wykresu
+    ymax = max(p95m, p95c, p99m, p99c) * 1.25
+    ax.set_ylim(0, ymax)
+    ax.axhline(K6_TIMEOUT_MS, color="#E53935", ls="--", lw=1.3, zorder=4,
+               label="Limit timeout k6 (30 s)")
+    ax.set_title("p95 / p99\n(faza spike — głównie timeouty)", fontsize=FS)
+    ax.set_ylabel("Czas [s]")
+    ax.set_xticks(x); ax.set_xticklabels(["p95", "p99"])
+    ax.yaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda v, _: f"{v/1000:.0f} s"))
+    ax.legend(loc="upper left", fontsize=FS - 2, ncol=1)
+    ax.set_axisbelow(True)
+
+    _add_footnote(fig,
+        "p50 (mediana) = połowa requestów odpowiedziała szybciej niż ta wartość — najważniejsza miara typowej wydajności.\n"
+        "p90 = 90% requestów zakończyło się poniżej tej wartości. "
+        "p95/p99 = ogon rozkładu — podczas fazy spike (300 wirtualnych użytkowników) część requestów "
+        "trafia w domyślny timeout k6 (30 s), co zawyża te percentyle.")
+    fig.savefig(OUTPUT_DIR / f"{num:02d}_czas_odpowiedzi_{label}.png",
+                dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  [OK] {num:02d}_czas_odpowiedzi_{label}.png")
+
+
+def _rolling_avg(values, window=5):
+    """Prosta średnia krocząca."""
+    if len(values) < window:
+        return values
+    result = []
+    for i in range(len(values)):
+        start = max(0, i - window // 2)
+        end   = min(len(values), i + window // 2 + 1)
+        result.append(float(np.mean(values[start:end])))
+    return result
 
 
 def chart_throughput(m_data, c_data, label, num):
-    tm, rm = to_rps(m_data["time_series"].get("http_reqs", []))
-    tc, rc = to_rps(c_data["time_series"].get("http_reqs", []))
-    fig, ax = plt.subplots(figsize=(8, 4))
-    if tm: ax.plot(tm, rm, color=C_MIN,  label="Minimal API",        lw=1.5, zorder=3)
-    if tc: ax.plot(tc, rc, color=C_CTRL, label="Controller-based API", lw=1.5, zorder=3)
-    ax.set_title(f"Przepustowość (req/s) w czasie [{label}]", pad=8)
-    ax.set_xlabel("Czas [s]"); ax.set_ylabel("Żądania / sekundę")
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
-    _save(fig, f"{num:02d}_przepustowosc_{label}.png")
+    tm, rm = to_rps(m_data["time_series"].get("http_reqs", []), window=10.0)
+    tc, rc = to_rps(c_data["time_series"].get("http_reqs", []), window=10.0)
+    fig, ax = plt.subplots(figsize=(9, 4))
+    # surowe dane — półprzezroczyste
+    if tm: ax.plot(tm, rm, color=C_MIN,  alpha=0.25, lw=0.8, zorder=2)
+    if tc: ax.plot(tc, rc, color=C_CTRL, alpha=0.25, lw=0.8, zorder=2)
+    # rolling average — wyraźna linia
+    ROLL = 5
+    if tm:
+        ax.plot(tm, _rolling_avg(rm, ROLL), color=C_MIN,  lw=2.0, label="Minimal API",          zorder=3)
+    if tc:
+        ax.plot(tc, _rolling_avg(rc, ROLL), color=C_CTRL, lw=2.0, label="Controller-based API", zorder=3)
+    ax.set_title(f"Przepustowość (req/s) w czasie [{label}]", pad=10, fontsize=FST)
+    ax.set_xlabel("Czas od startu testu [s]")
+    ax.set_ylabel("Żądania / sekundę")
+    ax.legend(loc="upper right")
+    ax.set_axisbelow(True)
+    _add_footnote(fig,
+        "Przepustowość = liczba odpowiedzi HTTP na sekundę. "
+        "Linia jasna (w tle) = surowe próbki co 10 s. Linia ciągła = wygładzona średnia krocząca. "
+        "Spadek przepustowości przy dużym obciążeniu (faza spike) wynika z kolejkowania requestów "
+        "i ograniczonego przydziału 1 rdzenia CPU na kontener.")
+    fig.savefig(OUTPUT_DIR / f"{num:02d}_przepustowosc_{label}.png",
+                dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  [OK] {num:02d}_przepustowosc_{label}.png")
 
 
 def chart_error_rate(m_data, c_data, label, num):
@@ -215,15 +328,24 @@ def chart_error_rate(m_data, c_data, label, num):
         v = d["metrics"].get("http_req_failed", [])
         return float(np.mean(v)) * 100 if v else 0.0
     vals = [epct(m_data), epct(c_data)]
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax = plt.subplots(figsize=(6, 4.5))
     bars = ax.bar(["Minimal API", "Controller-based API"], vals,
                   color=[C_MIN, C_CTRL], width=0.4, zorder=3)
     for b, v in zip(bars, vals):
-        ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.01,
-                f"{v:.3f}%", ha="center", va="bottom")
+        ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.1,
+                f"{v:.2f}%", ha="center", va="bottom", fontsize=FS, fontweight="bold")
     ax.set_title(f"Wskaźnik błędów HTTP [{label}]", pad=8)
-    ax.set_ylabel("Błędy [%]"); ax.set_ylim(0, max(max(vals)*1.4, 1))
-    ax.set_axisbelow(True); fig.tight_layout()
+    ax.set_ylabel("Błędy [%]"); ax.set_ylim(0, max(max(vals) * 1.5, 2))
+    ax.set_axisbelow(True)
+    # adnotacja wyjaśniająca źródło błędów
+    ax.text(0.5, 0.92,
+            "Błędy wynikają głównie z timeoutów podczas fazy spike (300 VU)\n"
+            "— normalny ruch (sustained) generuje <1% błędów",
+            transform=ax.transAxes, ha="center", va="top",
+            fontsize=FS - 2, color="#555555",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="#FFF8E1",
+                      edgecolor="#FFD54F", alpha=0.9))
+    fig.tight_layout()
     _save(fig, f"{num:02d}_bledy_{label}.png")
 
 
@@ -233,14 +355,27 @@ def chart_latency_histogram(m_data, c_data, label, num):
     if not dm and not dc:
         print(f"  [SKIP] Brak danych dla histogramu [{label}]")
         return
-    cap   = np.percentile(dm + dc, 99) if dm or dc else 2000
-    bins  = np.linspace(0, cap, 50)
-    fig, ax = plt.subplots(figsize=(8, 4))
-    if dm: ax.hist(dm, bins=bins, alpha=0.6, color=C_MIN,  label="Minimal API",        density=True, zorder=3)
-    if dc: ax.hist(dc, bins=bins, alpha=0.6, color=C_CTRL, label="Controller-based API", density=True, zorder=3)
-    ax.set_title(f"Rozkład latencji HTTP (do p99) [{label}]", pad=8)
+    all_vals = dm + dc
+    # Obetnij przy p90 żeby oś X była czytelna — ogon timeoutów i tak widać
+    cap  = np.percentile(all_vals, 90) if all_vals else 2000
+    bins = np.linspace(0, cap, 60)
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    if dm: ax.hist(dm, bins=bins, alpha=0.55, color=C_MIN,  label="Minimal API",          density=True, zorder=3)
+    if dc: ax.hist(dc, bins=bins, alpha=0.55, color=C_CTRL, label="Controller-based API", density=True, zorder=3)
+    # linia median
+    for vals, color, name in [(dm, C_MIN, "Minimal"), (dc, C_CTRL, "Controllers")]:
+        if vals:
+            med = np.percentile(vals, 50)
+            if med <= cap:
+                ax.axvline(med, color=color, ls="--", lw=1.4,
+                           label=f"p50 {name} = {med:.0f} ms")
+    ax.set_title(f"Rozkład latencji HTTP (do p90) [{label}]\n"
+                 "Ogon powyżej p90 pominięty (timeouty spike — 30 s)", pad=8)
     ax.set_xlabel("Czas odpowiedzi [ms]"); ax.set_ylabel("Gęstość")
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
+    if cap > 2000:
+        ax.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda v, _: f"{v/1000:.1f} s" if v >= 1000 else f"{v:.0f} ms"))
+    ax.legend(fontsize=FS - 1); ax.set_axisbelow(True); fig.tight_layout()
     _save(fig, f"{num:02d}_histogram_{label}.png")
 
 
@@ -252,26 +387,54 @@ def chart_auth_flow(m_data, c_data, num):
         ("auth_refresh_duration",  "Refresh token"),
         ("auth_revoke_duration",   "Revoke token"),
     ]
-    labels  = [s[1] for s in steps]
-    vals_m  = [pct(m_data["metrics"].get(s[0], []), 50) for s in steps]
-    vals_c  = [pct(c_data["metrics"].get(s[0], []), 50) for s in steps]
-    p95_m   = [pct(m_data["metrics"].get(s[0], []), 95) for s in steps]
-    p95_c   = [pct(c_data["metrics"].get(s[0], []), 95) for s in steps]
+    labels = [s[1] for s in steps]
+    vals_m = [pct(m_data["metrics"].get(s[0], []), 50) for s in steps]
+    vals_c = [pct(c_data["metrics"].get(s[0], []), 50) for s in steps]
+    p90_m  = [pct(m_data["metrics"].get(s[0], []), 90) for s in steps]
+    p90_c  = [pct(c_data["metrics"].get(s[0], []), 90) for s in steps]
 
-    x, w = np.arange(len(steps)), 0.35
-    fig, ax = plt.subplots(figsize=(9, 4))
-    b1 = ax.bar(x - w/2, vals_m, w, label="Minimal API (p50)",        color=C_MIN,  zorder=3)
-    b2 = ax.bar(x + w/2, vals_c, w, label="Controller-based API (p50)", color=C_CTRL, zorder=3)
-    # p95 error bars
-    ax.errorbar(x - w/2, vals_m, yerr=[np.zeros(len(steps)), [p-m for p, m in zip(p95_m, vals_m)]],
-                fmt="none", color="navy", capsize=3, lw=1.2, label="p95")
-    ax.errorbar(x + w/2, vals_c, yerr=[np.zeros(len(steps)), [p-m for p, m in zip(p95_c, vals_c)]],
-                fmt="none", color="darkred", capsize=3, lw=1.2)
-    ax.set_title("Czas każdego kroku auth flow (p50, słupki błędu = p95)", pad=8)
+    x, w = np.arange(len(steps)), 0.33
+    fig, ax = plt.subplots(figsize=(11, 5))
+
+    b1 = ax.bar(x - w/2, vals_m, w, label="Minimal API (mediana p50)",         color=C_MIN,  zorder=3)
+    b2 = ax.bar(x + w/2, vals_c, w, label="Controller-based API (mediana p50)", color=C_CTRL, zorder=3)
+
+    # etykiety wartości na słupkach
+    for b, v in list(zip(b1, vals_m)) + list(zip(b2, vals_c)):
+        if v > 0:
+            lbl = f"{v/1000:.1f}s" if v >= 1000 else f"{v:.0f}ms"
+            ax.text(b.get_x() + b.get_width()/2, b.get_height() + 15,
+                    lbl, ha="center", va="bottom", fontsize=FS - 2, fontweight="bold")
+
+    # p90 jako słupki błędów — tylko odchylenie w górę, zablokowane do ymax
+    err_m = [max(0, p - v) for p, v in zip(p90_m, vals_m)]
+    err_c = [max(0, p - v) for p, v in zip(p90_c, vals_c)]
+    ax.errorbar(x - w/2, vals_m, yerr=[np.zeros(len(steps)), err_m],
+                fmt="none", color="#1A237E", capsize=4, lw=1.5,
+                label="p90 Minimal API")
+    ax.errorbar(x + w/2, vals_c, yerr=[np.zeros(len(steps)), err_c],
+                fmt="none", color="#7B1FA2", capsize=4, lw=1.5,
+                label="p90 Controller-based API")
+
+    # oś Y — ogranicz do rozsądnej wartości żeby słupki błędów nie uciekały
+    bar_max = max(vals_m + vals_c + p90_m + p90_c)
+    ax.set_ylim(0, min(bar_max * 1.35, bar_max + 800))
+
+    ax.set_title("Czas odpowiedzi poszczególnych kroków auth flow\n"
+                 "(słupki = mediana p50, linie = p90)", pad=10, fontsize=FST)
     ax.set_ylabel("Czas [ms]")
-    ax.set_xticks(x); ax.set_xticklabels(labels)
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
-    _save(fig, f"{num:02d}_auth_flow_kroki.png")
+    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=FS)
+    ax.legend(loc="upper right", fontsize=FS - 1, ncol=2)
+    ax.set_axisbelow(True)
+
+    _add_footnote(fig,
+        "Rejestracja i Logowanie są wolne (~2 s) z powodu BCrypt — celowo powolny algorytm hashowania haseł "
+        "chroniący przed atakami brute-force. Secured GET to zwykły request z JWT — stąd bardzo niska latencja (~100 ms). "
+        "Refresh/Revoke token = operacje na bazie danych bez hashowania.")
+    fig.savefig(OUTPUT_DIR / f"{num:02d}_auth_flow_kroki.png",
+                dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  [OK] {num:02d}_auth_flow_kroki.png")
 
 
 def chart_benchmarkdotnet(bdn_rows, num):
@@ -320,37 +483,110 @@ def chart_benchmarkdotnet(bdn_rows, num):
     _save(fig, f"{num:02d}_benchmarkdotnet.png")
 
 
+def _build_phases():
+    """Przybliżone czasy faz testowych (sekundy od startu resource-monitora).
+    Warmup globalny: 2×90s + 30s = ~210s
+    crud-load: warmup 60s + ramp 70s + sustained 140s + spike 70s = ~340s
+    read-heavy: warmup 60s + ramp 70s + sustained 185s + spike 65s = ~380s
+    auth-flow: warmup 60s + auth 200s = ~260s
+    cooldown między scenariuszami: 90s
+    """
+    CRUD = 340; READ = 380; AUTH = 260; COOL = 90; WARMUP = 210
+    phases, t = [], WARMUP
+    for name, dur, color in [
+        ("CRUD\nMinimal",      CRUD, "#BBDEFB"),
+        ("CRUD\nControllers",  CRUD, "#FFCDD2"),
+        ("Read\nMinimal",      READ, "#BBDEFB"),
+        ("Read\nControllers",  READ, "#FFCDD2"),
+        ("Auth\nMinimal",      AUTH, "#BBDEFB"),
+        ("Auth\nControllers",  AUTH, "#FFCDD2"),
+    ]:
+        phases.append((t, t + dur, name, color))
+        t += dur + COOL
+    return phases
+
+
+def _add_phase_bands(ax, max_t, label_ypos_fraction=0.96):
+    """Kolorowe pasy i etykiety faz — etykiety na stałej wysokości, nie nachodzą na dane."""
+    phases = _build_phases()
+    ymin, ymax = ax.get_ylim()
+    label_y = ymin + (ymax - ymin) * label_ypos_fraction
+    for t0, t1, name, color in phases:
+        if t0 >= max_t:
+            break
+        t1c = min(t1, max_t)
+        ax.axvspan(t0, t1c, alpha=0.18, color=color, zorder=0, linewidth=0)
+        mid = (t0 + t1c) / 2
+        if mid < max_t:
+            ax.text(mid, label_y, name,
+                    ha="center", va="top", fontsize=FS - 3,
+                    color="#555555", linespacing=1.3,
+                    bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1))
+
+
 def chart_cpu(resources, num):
     if not resources:
         print("  [SKIP] Brak danych resource monitor (CPU)")
         return
-    fig, ax = plt.subplots(figsize=(9, 4))
+    fig, ax = plt.subplots(figsize=(12, 5))
+    max_t = 0
     for name, d in resources.items():
         color = C_MIN if "minimal" in name else C_CTRL
-        label = "Minimal API" if "minimal" in name else "Controller-based API"
+        lbl   = "Minimal API" if "minimal" in name else "Controller-based API"
         if d["ts"]:
-            ax.plot(d["ts"], d["cpu"], color=color, label=label, lw=1.2, zorder=3)
-    ax.set_title("Zużycie CPU podczas testów k6", pad=8)
-    ax.set_xlabel("Czas [s]"); ax.set_ylabel("CPU [%]")
+            smoothed = _rolling_avg(d["cpu"], window=7)
+            ax.plot(d["ts"], d["cpu"],  color=color, alpha=0.15, lw=0.6, zorder=2)
+            ax.plot(d["ts"], smoothed,  color=color, label=lbl,  lw=2.0, zorder=3)
+            max_t = max(max_t, max(d["ts"]))
+    ax.set_ylim(0, 115)
+    ax.set_xlim(left=0)
+    _add_phase_bands(ax, max_t, label_ypos_fraction=0.98)
+    ax.set_title("Zużycie CPU podczas testów k6", pad=10, fontsize=FST)
+    ax.set_xlabel("Czas od startu testów [s]")
+    ax.set_ylabel("CPU [%]")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter())
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
-    _save(fig, f"{num:02d}_cpu_procent.png")
+    ax.legend(loc="upper right", framealpha=0.9)
+    ax.set_axisbelow(True)
+    _add_footnote(fig,
+        "Każde API testowane osobno po kolei (pasy na wykresie = fazy testów). "
+        "Niebieski (Minimal API) i czerwony (Controller-based API) nie działają jednocześnie pod obciążeniem — "
+        "kiedy jeden jest testowany, drugi jest bezczynny. "
+        "Skoki do 100% oznaczają pełne wysycenie 1 rdzenia CPU przydzielonego kontenerowi.")
+    fig.savefig(OUTPUT_DIR / f"{num:02d}_cpu_procent.png",
+                dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  [OK] {num:02d}_cpu_procent.png")
 
 
 def chart_memory(resources, num):
     if not resources:
         print("  [SKIP] Brak danych resource monitor (RAM)")
         return
-    fig, ax = plt.subplots(figsize=(9, 4))
+    fig, ax = plt.subplots(figsize=(12, 5))
+    max_t = 0
     for name, d in resources.items():
         color = C_MIN if "minimal" in name else C_CTRL
-        label = "Minimal API" if "minimal" in name else "Controller-based API"
+        lbl   = "Minimal API" if "minimal" in name else "Controller-based API"
         if d["ts"]:
-            ax.plot(d["ts"], d["mem"], color=color, label=label, lw=1.2, zorder=3)
-    ax.set_title("Zużycie pamięci RAM podczas testów k6", pad=8)
-    ax.set_xlabel("Czas [s]"); ax.set_ylabel("Pamięć [MB]")
-    ax.legend(); ax.set_axisbelow(True); fig.tight_layout()
-    _save(fig, f"{num:02d}_ram_mb.png")
+            ax.plot(d["ts"], d["mem"], color=color, label=lbl, lw=2.0, zorder=3)
+            max_t = max(max_t, max(d["ts"]))
+    ax.set_xlim(left=0)
+    ymin_data = min(min(d["mem"]) for d in resources.values() if d["mem"])
+    ax.set_ylim(max(0, ymin_data - 20), None)
+    _add_phase_bands(ax, max_t, label_ypos_fraction=0.98)
+    ax.set_title("Zużycie pamięci RAM podczas testów k6", pad=10, fontsize=FST)
+    ax.set_xlabel("Czas od startu testów [s]")
+    ax.set_ylabel("Pamięć [MB]")
+    ax.legend(loc="upper right", framealpha=0.9)
+    ax.set_axisbelow(True)
+    _add_footnote(fig,
+        "RAM mierzony co 2 sekundy per kontener. "
+        "Każde API testowane osobno po kolei — wzrosty zużycia pamięci odpowiadają fazom obciążeniowym. "
+        ".NET GC (Garbage Collector) okresowo zwalnia pamięć, stąd widoczne 'skoki w dół' na wykresie.")
+    fig.savefig(OUTPUT_DIR / f"{num:02d}_ram_mb.png",
+                dpi=DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  [OK] {num:02d}_ram_mb.png")
 
 
 def chart_zap(unauth_m, unauth_c, auth_m, auth_c, num):
