@@ -12,6 +12,7 @@ namespace SecPerf.Domain.Repositories
         Task UpdateAsync(Order order);
         Task DeleteAsync(Order order);
         IQueryable<Order> Query();
+        IQueryable<Order> QueryWithItems();
         IQueryable<Order> QueryByUser(Guid userId);
         Task<int> SaveChangesAsync();
     }

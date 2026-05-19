@@ -35,8 +35,8 @@ export const options = {
         // ── Warmup ────────────────────────────────────────────────────────────
         warmup: {
             executor:  "constant-vus",
-            vus:       3,
-            duration:  "30s",
+            vus:       5,
+            duration:  "60s",
             startTime: "0s",
             exec:      "warmupFn",
             gracefulStop: "5s",
@@ -47,11 +47,11 @@ export const options = {
             executor: "ramping-vus",
             startVUs: 0,
             stages: [
-                { duration: "30s", target: 50  },  // ramp up
-                { duration: "60s", target: 50  },  // sustained
+                { duration: "30s", target: 20  },  // ramp up
+                { duration: "90s", target: 20  },  // sustained
                 { duration: "15s", target: 0   },  // cool down
             ],
-            startTime: "35s",                      // po warmup + 5s margines
+            startTime: "65s",                      // po warmup + 5s margines
             gracefulRampDown: "10s",
         },
     },

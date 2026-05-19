@@ -8,6 +8,7 @@ namespace SecPerf.Domain.Repositories
         IProductRepository Products { get; }
         IUserRepository Users { get; }
         IRefreshTokenRepository RefreshTokens { get; }
+        IOrderRepository Orders { get; }
 
         Task<int> CommitAsync();
     }

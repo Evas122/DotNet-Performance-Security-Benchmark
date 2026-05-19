@@ -32,6 +32,7 @@ namespace SecPerf.Infrastructure.Repositories
         public IProductRepository Products => _productRepository;
         public IUserRepository Users => _userRepository;
         public IRefreshTokenRepository RefreshTokens => _refreshTokenRepository;
+        public IOrderRepository Orders => _orderRepository;
 
         public async Task<int> CommitAsync()
         {

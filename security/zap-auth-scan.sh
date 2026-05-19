@@ -42,8 +42,8 @@ fi
 
 zap-baseline.py \
   -t "${TARGET}" \
-  -r "${REPORTS_DIR}/${REPORT_BASE}-report.html" \
-  -x "${REPORTS_DIR}/${REPORT_BASE}-report.xml" \
+  -r "${REPORT_BASE}-report.html" \
+  -x "${REPORT_BASE}-report.xml" \
   -I \
   ${AUTH_FLAG} \
   || true

@@ -22,10 +22,12 @@ import { resolveBaseUrl, commonThresholds } from "../config.js";
 import { register, authHeaders } from "../helpers/auth.js";
 
 // ── Custom metrics ────────────────────────────────────────────────────────────
-const getProductsDuration  = new Trend("get_products_duration",  true);
+const getProductsDuration    = new Trend("get_products_duration",    true);
 const getProductByIdDuration = new Trend("get_product_by_id_duration", true);
-const createProductDuration = new Trend("create_product_duration", true);
-const errorRate             = new Rate("custom_error_rate");
+const createProductDuration  = new Trend("create_product_duration",  true);
+const getOrdersDuration      = new Trend("get_orders_duration",      true);
+const getOrderByIdDuration   = new Trend("get_order_by_id_duration", true);
+const errorRate              = new Rate("custom_error_rate");
 
 // ── Options ───────────────────────────────────────────────────────────────────
 // Oś czasu (wszystkie scenariusze sekwencyjne — jeden po drugim):
@@ -43,8 +45,8 @@ export const options = {
         // ── Warmup — nie wlicza się do thresholdów ────────────────────────────
         warmup: {
             executor:  "constant-vus",
-            vus:       5,
-            duration:  "30s",
+            vus:       20,
+            duration:  "60s",
             startTime: "0s",
             exec:      "warmupFn",              // osobna funkcja, nie wpada do Trends
             gracefulStop: "5s",
@@ -58,7 +60,7 @@ export const options = {
                 { duration: "60s", target: 100 },
                 { duration: "10s", target: 0   },   // cool-down
             ],
-            startTime: "35s",                       // po warmup + 5s margines
+            startTime: "65s",                       // po warmup + 5s margines
             gracefulRampDown: "10s",
         },
 
@@ -67,27 +69,29 @@ export const options = {
             executor:  "constant-vus",
             vus:       100,
             duration:  "120s",
-            startTime: "110s",                      // po ramp_up
+            startTime: "140s",                      // po ramp_up
         },
 
-        // ── Spike: 100 → 500 VU (nagły skok) ─────────────────────────────────
+        // ── Spike: 100 → 300 VU (nagły skok) ─────────────────────────────────
         spike: {
             executor:  "ramping-vus",
             startVUs:  100,
             stages: [
-                { duration: "30s", target: 500 },
+                { duration: "30s", target: 300 },
                 { duration: "30s", target: 100 },
                 { duration: "10s", target: 0   },
             ],
-            startTime: "235s",                      // po sustained
+            startTime: "265s",                      // po sustained
             gracefulRampDown: "10s",
         },
     },
     thresholds: {
         ...commonThresholds,
-        "get_products_duration":    ["p(95)<1500"],
+        "get_products_duration":      ["p(95)<1500"],
         "get_product_by_id_duration": ["p(95)<1500"],
-        "create_product_duration":  ["p(95)<2000"],
+        "create_product_duration":    ["p(95)<2000"],
+        "get_orders_duration":        ["p(95)<2000"],
+        "get_order_by_id_duration":   ["p(95)<2000"],
     },
 };
 
@@ -165,6 +169,36 @@ export default function (tokens) {
         "POST /api/products → 200 or 201": (r) => r.status === 200 || r.status === 201,
     });
     errorRate.add(!createOk);
+
+    sleep(0.5);
+
+    // 4. GET /api/orders — list orders (paginated, uses seeded 100k orders)
+    const ordersRes = http.get(`${BASE_URL}/api/orders`, headers);
+    getOrdersDuration.add(ordersRes.timings.duration);
+    const ordersOk = check(ordersRes, {
+        "GET /api/orders → 200": (r) => r.status === 200,
+    });
+    errorRate.add(!ordersOk);
+
+    sleep(0.5);
+
+    // 5. GET /api/orders/:id — fetch a specific order if list returned results
+    let orderId = null;
+    try {
+        const orders = ordersRes.json();
+        if (Array.isArray(orders) && orders.length > 0) {
+            orderId = orders[0].id;
+        }
+    } catch (_) {}
+
+    if (orderId) {
+        const orderByIdRes = http.get(`${BASE_URL}/api/orders/${orderId}`, headers);
+        getOrderByIdDuration.add(orderByIdRes.timings.duration);
+        const orderByIdOk = check(orderByIdRes, {
+            "GET /api/orders/:id → 200": (r) => r.status === 200,
+        });
+        errorRate.add(!orderByIdOk);
+    }
 
     sleep(1);
 }

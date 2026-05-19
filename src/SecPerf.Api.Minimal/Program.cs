@@ -62,6 +62,7 @@ app.UseAuthorization();
 // Map minimal API endpoints
 app.MapAuthEndpoints();
 app.MapProductEndpoints();
+app.MapOrderEndpoints();
 app.MapHealthEndpoints();
 
 app.Run();

@@ -40,6 +40,12 @@ namespace SecPerf.Infrastructure.Repositories
         public IQueryable<Order> Query()
             => _context.Orders.AsQueryable();
 
+        public IQueryable<Order> QueryWithItems()
+            => _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(i => i.Product)
+                .AsQueryable();
+
         public IQueryable<Order> QueryByUser(Guid userId)
             => _context.Orders.Where(o => o.UserId == userId).AsQueryable();
 
